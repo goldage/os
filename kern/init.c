@@ -14,6 +14,8 @@ void
 i386_init(void)
 {
 	extern char edata[], end[];
+	//int x = 1,y = 3,z = 4;
+	//unsigned int  i = 0x00646c72;
 
 	// Before doing anything else, complete the ELF loading process.
 	// Clear the uninitialized global data (BSS) section of our program.
@@ -24,6 +26,9 @@ i386_init(void)
 	// Can't call cprintf until after we do this!
 	cons_init();
 
+	//cprintf("x %d, y %x,z %d\n",x,y,z);
+	//cprintf("H%x Wo%s", 57616, &i);
+	
 	cprintf("6828 decimal is %o octal!\n", 6828);
 
 	// Lab 2 memory management initialization functions
