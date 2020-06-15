@@ -236,7 +236,7 @@ mem_init(void)
 
 //
 // Initialize page structure and memory free list.
-// After this is done, NEVER use boot_alloc again.  ONLY use the page
+// After this is done, NEVER use boot_alloc again. ONLY use the page
 // allocator functions below to allocate and deallocate physical
 // memory via the page_free_list.
 //
@@ -388,6 +388,16 @@ page_decref(struct PageInfo* pp)
 // Hint 3: look at inc/mmu.h for useful macros that manipulate page
 // table and page directory entries.
 //
+/////////////////////////////////////////////////////////////////////////////////////
+// 参数：
+//
+//  pgdir: 页目录虚拟地址
+//  va: 虚拟地址
+//  create: 布尔值
+//
+// 返回值：页表条目的地址
+// 作用：给定pgdir，指向一个页目录，该函数返回一个指针指向虚拟地址va对应的页表条目(PTE)。
+
 pte_t *
 pgdir_walk(pde_t *pgdir, const void *va, int create)
 {
@@ -420,6 +430,18 @@ pgdir_walk(pde_t *pgdir, const void *va, int create)
 // mapped pages.
 //
 // Hint: the TA solution uses pgdir_walk
+///////////////////////////////////////////////////////////////////////////////////////
+// 参数：
+//
+//  pgdir:页目录指针
+//  va:虚拟地址
+//  size:大小
+//  pa:物理地址
+//  perm:权限
+//
+// 作用：通过修改pgdir指向的树，将[va, va+size)对应的虚拟地址空间映射到物理地址空间[pa, pa+size)。
+//       va和pa都是页对齐的。
+
 static void
 boot_map_region(pde_t *pgdir, uintptr_t va, size_t size, physaddr_t pa, int perm)
 {
@@ -468,6 +490,17 @@ boot_map_region(pde_t *pgdir, uintptr_t va, size_t size, physaddr_t pa, int perm
 // Hint: The TA solution is implemented using pgdir_walk, page_remove,
 // and page2pa.
 //
+////////////////////////////////////////////////////////////
+//参数：
+//
+//  pgdir: 页目录指针
+//  pp: PageInfo结构指针，代表一个物理页
+//  va: 线性地址
+//  perm：权限
+//
+// 返回值：0代表成功，-E_NO_MEM代表物理空间不足。
+// 作用：修改pgdir对应的树结构，使va映射到pp对应的物理页处。
+
 int
 page_insert(pde_t *pgdir, struct PageInfo *pp, void *va, int perm)
 {
@@ -503,6 +536,16 @@ page_insert(pde_t *pgdir, struct PageInfo *pp, void *va, int perm)
 //
 // Hint: the TA solution uses pgdir_walk and pa2page.
 //
+/////////////////////////////////////////////////////////////////////////////////////////
+// 参数：
+//
+// pgdir:页目录地址
+// va:虚拟地址
+// pte_store:一个指针类型，指向pte_t *类型的变量
+//
+// 返回值：PageInfo*
+// 作用：通过查找pgdir指向的树结构，返回va对应的PTE所指向的物理地址对应的PageInfo结构地址
+
 struct PageInfo *
 page_lookup(pde_t *pgdir, void *va, pte_t **pte_store)
 {
@@ -541,6 +584,13 @@ page_lookup(pde_t *pgdir, void *va, pte_t **pte_store)
 // Hint: The TA solution is implemented using page_lookup,
 // 	tlb_invalidate, and page_decref.
 //
+/////////////////////////////////////////////////
+// 参数：
+//
+//  pgdir:页目录地址
+//  va:虚拟地址
+// 作用：修改pgdir指向的树结构，解除va的映射关系。
+
 void
 page_remove(pde_t *pgdir, void *va)
 {
