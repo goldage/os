@@ -108,7 +108,7 @@ boot_alloc(uint32_t n)
     if ((uint32_t)nextfree > KERNBASE + (npages * PGSIZE)) {
         panic("Out of memory!\n");
     }
-	return nextfree;
+	return result;
 }
 
 // Set up a two-level page table:
@@ -275,12 +275,12 @@ page_init(void)
 	// 已使用的物理页包括如下几部分：
 	// 1）第一个物理页是IDT所在，需要标识为已用
 	// 2）[IOPHYSMEM, EXTPHYSMEM) 称为 IO hole 的区域，需要标识为已用。
-	// 3）EXTPHYSMEM 是内核加载的起始位置，终止位置可以由 boot_alloc(0) 给出（理由是 boot_alloc() 分配的内存是内核的最尾部），这块区域也要标识
+	// 3）EXTPHYSMEM 是内核加载的起始位置，终止位置可以由 boot_alloc(0) 给出（理由是 boot_alloc() 分配的内存是内核的最尾部），这块区域也要标识为已用。
 
 	size_t i;
 	size_t io_hole_start_page = (size_t)IOPHYSMEM / PGSIZE;
-    size_t io_hole_end_page = (size_t)EXTPHYSMEM / PGSIZE;
-	size_t kernel_end_page = PADDR(boot_alloc(0)) / PGSIZE;
+    //size_t io_hole_end_page = (size_t)EXTPHYSMEM / PGSIZE;
+	size_t kernel_end_page = PADDR(boot_alloc(0)) / PGSIZE; // boot_alloc返回的是虚拟地址，需要转为物理地址
 
 	for (i = 0; i < npages; i++) {
         // physical page 0
@@ -292,13 +292,10 @@ page_init(void)
             pages[i].pp_ref = 0;
             pages[i].pp_link = page_free_list;
             page_free_list = &pages[i];
-        // io hole
-        } else if (i >= io_hole_start_page && i < io_hole_end_page) {
+        // io hole and the extended memory used by kernel
+        } else if (i >= io_hole_start_page && i < kernel_end_page) {
             pages[i].pp_ref = 1;
-        // the extended memory used by kernel
-        } else if (i >= io_hole_end_page || i < kernel_end_page){
-			pages[i].pp_ref++;
-			pages[i].pp_link = NULL;
+            pages[i].pp_link = NULL;
         // the rest of extended memory (free)
 		} else {
 			pages[i].pp_ref = 0;
