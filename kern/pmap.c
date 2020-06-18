@@ -155,6 +155,7 @@ mem_init(void)
 	// Your code goes here:
 	pages = (struct PageInfo *)boot_alloc(sizeof(struct PageInfo) * npages);
 	memset(pages, 0, sizeof(struct PageInfo) * npages);
+    cprintf("page_info_end_VA:x\n",pages+sizeof(struct PageInfo)*npages);
 
 
 	//////////////////////////////////////////////////////////////////////
@@ -179,6 +180,7 @@ mem_init(void)
 	//      (ie. perm = PTE_U | PTE_P)
 	//    - pages itself -- kernel RW, user NONE
 	// Your code goes here:
+	// 将虚拟地址的UPAGES映射到物理地址pages数组开始的位置
 	boot_map_region(kern_pgdir, UPAGES, PTSIZE, PADDR(pages), PTE_U);
 
 	//////////////////////////////////////////////////////////////////////
@@ -193,6 +195,7 @@ mem_init(void)
 	//     Permissions: kernel RW, user NONE
 	// Your code goes here:
 	boot_map_region(kern_pgdir, KSTACKTOP-KSTKSIZE, KSTKSIZE, PADDR(bootstack), PTE_W);
+
 	//////////////////////////////////////////////////////////////////////
 	// Map all of physical memory at KERNBASE.
 	// Ie.  the VA range [KERNBASE, 2^32) should map to
@@ -287,15 +290,11 @@ page_init(void)
 		if (i == 0) {
 			pages[i].pp_ref = 1;
 			pages[i].pp_link = NULL;
-        // the rest of base memory(free)
-		} else if (i < npages_basemem) {
-            pages[i].pp_ref = 0;
-            pages[i].pp_link = page_free_list;
-            page_free_list = &pages[i];
         // io hole and the extended memory used by kernel
         } else if (i >= io_hole_start_page && i < kernel_end_page) {
             pages[i].pp_ref = 1;
             pages[i].pp_link = NULL;
+        // the rest of base memory(free)
         // the rest of extended memory (free)
 		} else {
 			pages[i].pp_ref = 0;
