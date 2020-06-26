@@ -181,7 +181,7 @@ mem_init(void)
 	//    - pages itself -- kernel RW, user NONE
 	// Your code goes here:
 	// 将虚拟地址的UPAGES映射到物理地址pages数组开始的位置
-	boot_map_region(kern_pgdir, UPAGES, PTSIZE, PADDR(pages), PTE_U);
+	boot_map_region(kern_pgdir, UPAGES, PTSIZE, PADDR(pages), PTE_U |PTE_P);
 
 	//////////////////////////////////////////////////////////////////////
 	// Use the physical memory that 'bootstack' refers to as the kernel
@@ -194,7 +194,7 @@ mem_init(void)
 	//       overwrite memory.  Known as a "guard page".
 	//     Permissions: kernel RW, user NONE
 	// Your code goes here:
-	boot_map_region(kern_pgdir, KSTACKTOP-KSTKSIZE, KSTKSIZE, PADDR(bootstack), PTE_W);
+	boot_map_region(kern_pgdir, KSTACKTOP-KSTKSIZE, KSTKSIZE, PADDR(bootstack), PTE_W |PTE_P);
 
 	//////////////////////////////////////////////////////////////////////
 	// Map all of physical memory at KERNBASE.
@@ -204,7 +204,7 @@ mem_init(void)
 	// we just set up the mapping anyway.
 	// Permissions: kernel RW, user NONE
 	// Your code goes here:
-	boot_map_region(kern_pgdir, KERNBASE, 0xffffffff - KERNBASE, 0, PTE_W);
+	boot_map_region(kern_pgdir, KERNBASE, 0xffffffff - KERNBASE, 0, PTE_W |PTE_P);
 
 	// Check that the initial page directory has been set up correctly.
 	check_kern_pgdir();
@@ -405,6 +405,7 @@ pgdir_walk(pde_t *pgdir, const void *va, int create)
 	//get page directory entry
 	pde_t * pde_ptr = pgdir + pgdir_index;
 	if(!(*pde_ptr & PTE_P)) {
+		//page table page doesn't exist
 		if (create) { 
       		//alloc a new page table page
 			struct PageInfo * pp = page_alloc(ALLOC_ZERO);
@@ -457,21 +458,23 @@ pgdir_walk(pde_t *pgdir, const void *va, int create)
 static void
 boot_map_region(pde_t *pgdir, uintptr_t va, size_t size, physaddr_t pa, int perm)
 {
-	// Fill this function in
-	size_t pgs = size / PGSIZE;
-    // 计算总共有多少页
+	// get the number of pages to be mapped
+	size_t page_num = size / PGSIZE;
+	
 	if (size % PGSIZE != 0) {
-		pgs++;
+		page_num++;
 	}
-	for (int i = 0; i < pgs; i++) {
-        // 获取va对应的PTE的地址
-		pte_t * pte = pgdir_walk(pgdir, (void *)va, 1);
+	
+	for (size_t i = 0; i < page_num; i++) {
+     	//iterate through to get each pte address through pgdir_walk given virtual
+        //address ( va -> pte's address)
+		pte_t * pte = pgdir_walk(pgdir, (void *)va, true);
 		if (pte == NULL) {
 			panic("boot_map_region(): out of memory\n");
 		}
-        // 修改va对应的PTE的值
+        //set pte_t according to physical address and permission flags
 		*pte = pa | PTE_P | perm;
-        // 更新pa和va，进行下一轮循环
+      	//update pa and va
 		pa += PGSIZE;
 		va += PGSIZE;
 	}
@@ -517,21 +520,26 @@ int
 page_insert(pde_t *pgdir, struct PageInfo *pp, void *va, int perm)
 {
 	// Fill this function in
-	// 拿到va对应的PTE地址，如果va对应的页表还没有分配，则分配一个物理页作为页表
-	pte_t * pte = pgdir_walk(pgdir, va, 1);
+	// try to get pointer to  PTE,created if needed
+	pte_t * pte = pgdir_walk(pgdir, va, true);
 	if (pte == NULL) {
+		//page table cannot be allocated
 		return -E_NO_MEM;
 	}
-    // 引用加1
+    // increase reference ahead of insertion to process CORNER CASE
 	pp->pp_ref++;
-    // 当前虚拟地址va已经被映射过，需要先释放
+   
 	if ((*pte) & PTE_P) {
+		// exists page mapped at va
+		// remove page and invalidate tlb
 		page_remove(pgdir, va);
 	}
-    // 将PageInfo结构转换为对应物理页的首地址
+	
+    // get physical address of page
 	physaddr_t pa = page2pa(pp);
-    // 修改PTE
+    // insert page into page table
 	*pte = pa | perm | PTE_P;
+	//update permission flags of corresponding page directory
 	pgdir[PDX(va)] |= perm;
 
 	return 0;
@@ -562,23 +570,27 @@ struct PageInfo *
 page_lookup(pde_t *pgdir, void *va, pte_t **pte_store)
 {
 	// Fill this function in
-	struct PageInfo *pp;
-    // 如果对应的页表不存在，不进行创建
-	pte_t * pte = pgdir_walk(pgdir, va, 0);
+	struct PageInfo *page;
+	// get PTE according to va
+	pte_t * pte = pgdir_walk(pgdir, va, false);
 	if (pte == NULL) {
+		//no page mapped at va
 		return NULL;
 	}
 	if (!(*pte) & PTE_P) {
+		//no page mapped at va
 		return NULL;
 	}
-    // va对应的物理地址
+    // get physical address from PTE
 	physaddr_t pa = PTE_ADDR(*pte);
-    // 物理地址对应的PageInfo结构地址
-	pp = pa2page(pa);
+ 	// convert from pa to page 
+	page = pa2page(pa);
+	// pte_store not zero,store the address of PTE of the page in it
 	if (pte_store != NULL) {
 		*pte_store = pte;
 	}
-	return pp;
+	// return struct PageInfo
+	return page;
 }
 
 //
@@ -608,17 +620,17 @@ page_remove(pde_t *pgdir, void *va)
 {
 	// Fill this function in
 	pte_t * pte_store;
-    // 获取va对应的PTE的地址以及pp结构
-	struct PageInfo * pp = page_lookup(pgdir, va, &pte_store);
-    // va可能还没有映射，那就什么都不用做
-    if (pp == NULL) {
+  	// use page_lookup to get struct PageInfo
+	struct PageInfo * page = page_lookup(pgdir, va, &pte_store);
+    // no page mapped at va
+    if (page == NULL) {
 		return;
 	}
-    // 将pp->pp_ref减1，如果pp->pp_ref为0，需要释放该PageInfo结构（将其放入page_free_list链表中）
-	page_decref(pp);
-    // 将PTE清空
+    // decrease and try to free page
+	page_decref(page);
+    // set PTE to zero
 	*pte_store = 0;
-    // 失效化TLB缓存
+    // invalidate tlb
 	tlb_invalidate(pgdir, va);
 }
 
