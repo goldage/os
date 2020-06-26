@@ -155,7 +155,7 @@ mem_init(void)
 	// Your code goes here:
 	pages = (struct PageInfo *)boot_alloc(sizeof(struct PageInfo) * npages);
 	memset(pages, 0, sizeof(struct PageInfo) * npages);
-    cprintf("page_info_end_VA:x\n",pages+sizeof(struct PageInfo)*npages);
+    cprintf("page_info_end_VA: %x\n",pages+sizeof(struct PageInfo)*npages);
 
 
 	//////////////////////////////////////////////////////////////////////
@@ -400,22 +400,35 @@ page_decref(struct PageInfo* pp)
 pte_t *
 pgdir_walk(pde_t *pgdir, const void *va, int create)
 {
-	// Fill this function in
-	pde_t * pde_ptr = pgdir + PDX(va);//页表还没有分配
+	//get page directory index
+	size_t pgdir_index = PDX(va);
+	//get page directory entry
+	pde_t * pde_ptr = pgdir + pgdir_index;
 	if(!(*pde_ptr & PTE_P)) {
-		if (create) {
-            //分配一个页作为页表
-			struct PageInfo * pp = page_alloc(1);
+		if (create) { 
+      		//alloc a new page table page
+			struct PageInfo * pp = page_alloc(ALLOC_ZERO);
 			if (pp == NULL) {
+				//alloc fails
 				return NULL;
 			}
+			//increase physical page's reference count
 			pp->pp_ref ++;
-			*pde_ptr = (page2pa(pp)) | PTE_P | PTE_U | PTE_W;//更新页目录项
+			//get physical address of physical page
+			physaddr_t page_pa = page2pa(pp);
+			//insert page table into page directory
+			*pde_ptr = (page_pa) | PTE_P | PTE_U | PTE_W;
 		} else {
+			//create flag is false,return NULL
 			return NULL;
 		}
 	}
-	return (pte_t *)KADDR(PTE_ADDR(*pde_ptr) + PTX(va));
+	//page table page exists
+	//get page table index
+	size_t pgtable_index = PTX(va);
+	//get address of page table 
+	pte_t * pgtable = KADDR(PTE_ADDR(*pde_ptr));
+	return (pte_t *)(pgtable + pgtable_index);
 }
 
 //
